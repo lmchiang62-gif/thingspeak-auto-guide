@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ThingSpeak_Auto｜自動同步教學</title>
+  <style>
+    :root { --ink:#17324d; --muted:#5f7285; --line:#dbe5ec; --blue:#1769aa; --soft:#eef7ff; --green:#176b4d; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:#f6f9fb; font-family:system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif; line-height:1.7; }
+    header { padding:56px 20px 44px; background:linear-gradient(135deg,#0f466d,#2382b4); color:#fff; }
+    .wrap { max-width:980px; margin:auto; }
+    h1 { margin:0 0 12px; font-size:clamp(2rem,5vw,3.2rem); line-height:1.15; }
+    header p { max-width:700px; margin:0; opacity:.92; font-size:1.08rem; }
+    main { padding:28px 20px 64px; }
+    section, .card { background:#fff; border:1px solid var(--line); border-radius:16px; padding:24px; margin:18px 0; box-shadow:0 6px 20px rgba(23,50,77,.05); }
+    h2 { margin:0 0 14px; font-size:1.45rem; }
+    h3 { margin:22px 0 8px; }
+    .flow { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:18px; }
+    .flow div { padding:15px; border-radius:12px; background:var(--soft); border:1px solid #cde7f8; text-align:center; font-weight:700; }
+    .step { display:flex; gap:14px; align-items:flex-start; }
+    .num { flex:0 0 34px; height:34px; border-radius:50%; display:grid; place-items:center; background:var(--blue); color:white; font-weight:800; }
+    code, pre { font-family:ui-monospace,SFMono-Regular,Consolas,monospace; }
+    pre { position:relative; overflow:auto; padding:18px; border-radius:12px; background:#122231; color:#e9f4fb; font-size:.88rem; line-height:1.55; }
+    .copy { position:absolute; top:10px; right:10px; border:1px solid #6c8ca4; background:#213c51; color:#fff; border-radius:7px; padding:5px 9px; cursor:pointer; }
+    .note { padding:14px 16px; border-left:4px solid #f3a712; background:#fff8e8; border-radius:8px; }
+    .ok { padding:14px 16px; border-left:4px solid #2b9a6d; background:#eefaf4; border-radius:8px; }
+    table { width:100%; border-collapse:collapse; margin-top:10px; }
+    th,td { text-align:left; padding:10px; border-bottom:1px solid var(--line); }
+    th { background:#f0f6fa; }
+    a { color:var(--blue); }
+    footer { text-align:center; color:var(--muted); padding:20px; }
+    @media (max-width:700px) { .flow { grid-template-columns:1fr; } section,.card { padding:18px; } }
+  </style>
+</head>
+<body>
+  <header><div class="wrap">
+    <h1>ThingSpeak_Auto 自動同步教學</h1>
+    <p>把 ThingSpeak 頻道 3430234 的環境資料，每 5 分鐘自動寫入 Google 試算表。</p>
+  </div></header>
+
+  <main class="wrap">
+    <section>
+      <h2>完成後的資料流程</h2>
+      <div class="flow"><div>ThingSpeak<br>頻道 3430234</div><div>Apps Script<br>每 5 分鐘執行</div><div>Google Sheet<br>ThingSpeak_Auto</div></div>
+    </section>
+
+    <section>
+      <h2>一、建立 Google 試算表</h2>
+      <div class="step"><span class="num">1</span><div>開啟 <a href="https://sheets.google.com" target="_blank" rel="noreferrer">Google 試算表</a>，建立一份新試算表。</div></div>
+      <div class="step"><span class="num">2</span><div>從網址複製試算表 ID。網址中 <code>/d/</code> 與 <code>/edit</code> 之間的文字就是 ID。</div></div>
+      <div class="step"><span class="num">3</span><div>本教學會自動建立一個名為 <code>ThingSpeak_Auto</code> 的新分頁。</div></div>
+      <div class="note">本範例的 ThingSpeak 頻道 ID 是 <code>3430234</code>，CO₂ 在 field3。</div>
+    </section>
+
+    <section>
+      <h2>二、建立 Apps Script</h2>
+      <div class="step"><span class="num">1</span><div>在試算表選擇「擴充功能」→「Apps Script」。</div></div>
+      <div class="step"><span class="num">2</span><div>刪除編輯器裡原本的程式碼，貼上下一節的完整程式。</div></div>
+      <div class="step"><span class="num">3</span><div>把 <code>SHEET_ID</code> 換成你自己的試算表 ID，按儲存。</div></div>
+    </section>
+
+    <section>
+      <h2>三、完整 Apps Script 程式</h2>
+      <pre id="script"><button class="copy" onclick="copyCode('script')">複製程式</button><code>const CHANNEL_ID = '3430234';
+const SHEET_ID = '請替換成你的 Google 試算表 ID';
+const SHEET_NAME = 'ThingSpeak_Auto';
+const FEED_URL =
+  'https://api.thingspeak.com/channels/' + CHANNEL_ID + '/feeds.json?results=1';
+
+function getSpreadsheet() {
+  return SpreadsheetApp.openById(SHEET_ID);
+}
+
+function setup() {
+  const spreadsheet = getSpreadsheet();
+  let sheet = spreadsheet.getSheetByName(SHEET_NAME);
+  if (!sheet) sheet = spreadsheet.insertSheet(SHEET_NAME);
+
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow([
+      'ThingSpeak entry_id', '時間', '溫度 (°C)', '濕度 (%)', 'CO₂ (ppm)',
+      'PM2.5', 'PM10', 'TVOC', 'NOX', '照度'
+    ]);
+  }
+
+  // 避免重複建立觸發器
+  ScriptApp.getProjectTriggers().forEach(function(trigger) {
+    if (trigger.getHandlerFunction() === 'syncThingSpeak') {
+      ScriptApp.deleteTrigger(trigger);
+    }
+  });
+
+  ScriptApp.newTrigger('syncThingSpeak')
+    .timeBased()
+    .everyMinutes(5)
+    .create();
+
+  // 建立完成後立即抓一次最新資料
+  syncThingSpeak();
+}
+
+function syncThingSpeak() {
+  const response = UrlFetchApp.fetch(FEED_URL, {
+    muteHttpExceptions: true
+  });
+  if (response.getResponseCode() !== 200) {
+    throw new Error('ThingSpeak 回應錯誤：' + response.getResponseCode());
+  }
+
+  const data = JSON.parse(response.getContentText());
+  if (!data.feeds || data.feeds.length === 0) {
+    throw new Error('沒有 ThingSpeak 資料');
+  }
+
+  const sheet = getSpreadsheet().getSheetByName(SHEET_NAME);
+  const feed = data.feeds[0];
+  const lastId = sheet.getLastRow() > 1
+    ? String(sheet.getRange(sheet.getLastRow(), 1).getValue())
+    : '';
+
+  // 同一筆資料不重複寫入
+  if (String(feed.entry_id) === lastId) return;
+
+  const timezone = getSpreadsheet().getSpreadsheetTimeZone() || 'Asia/Taipei';
+  const time = Utilities.formatDate(
+    new Date(feed.created_at), timezone, 'yyyy-MM-dd HH:mm:ss'
+  );
+
+  sheet.appendRow([
+    feed.entry_id, time, feed.field1, feed.field2, feed.field3,
+    feed.field4, feed.field5, feed.field6, feed.field7, feed.field8
+  ]);
+}</code></pre>
+    </section>
+
+    <section>
+      <h2>四、第一次執行與授權</h2>
+      <div class="step"><span class="num">1</span><div>上方函式選單選擇 <code>setup</code>，按「執行」。</div></div>
+      <div class="step"><span class="num">2</span><div>按「審查權限」，選擇你的 Google 帳號。</div></div>
+      <div class="step"><span class="num">3</span><div>若出現「這個應用程式未經 Google 驗證」，按「進階」→「前往未命名的專案」→「允許」。</div></div>
+      <div class="ok">完成授權後，程式會建立 <code>ThingSpeak_Auto</code> 分頁，並立即寫入最新一筆資料。</div>
+    </section>
+
+    <section>
+      <h2>五、確認是否成功</h2>
+      <table><thead><tr><th>欄位</th><th>來源</th></tr></thead><tbody>
+        <tr><td>entry_id</td><td>ThingSpeak entry_id</td></tr>
+        <tr><td>時間</td><td>轉換為試算表時區</td></tr>
+        <tr><td>溫度、濕度、CO₂</td><td>field1、field2、field3</td></tr>
+        <tr><td>PM2.5、PM10、TVOC、NOX、照度</td><td>field4～field8</td></tr>
+      </tbody></table>
+      <p>到「觸發條件」頁面可看到 <code>syncThingSpeak</code> 的時間觸發器，頻率為每 5 分鐘。</p>
+    </section>
+
+    <section>
+      <h2>常見錯誤</h2>
+      <div class="note"><strong>Cannot read properties of null (reading 'getSheetByName')</strong><br>通常是使用了 <code>getActiveSpreadsheet()</code>。本教學改用 <code>SpreadsheetApp.openById(SHEET_ID)</code>，並且必須填入正確的試算表 ID。</div>
+      <div class="note"><strong>資料重複</strong><br>確認程式只保留一個 <code>syncThingSpeak</code> 觸發器；重新執行 <code>setup</code> 會先刪除舊觸發器再建立一個新的。</div>
+      <div class="note"><strong>空白資料</strong><br>先確認 ThingSpeak 頻道有公開資料，並用這個網址測試：<br><code>https://api.thingspeak.com/channels/3430234/feeds.json?results=1</code></div>
+    </section>
+  </main>
+  <footer>ThingSpeak_Auto 教學｜資料來源：ThingSpeak channel 3430234</footer>
+  <script>
+    function copyCode(id) {
+      const text = document.querySelector('#' + id + ' code').innerText;
+      navigator.clipboard.writeText(text).then(() => alert('程式已複製'));
+    }
+  </script>
+</body>
+</html>
